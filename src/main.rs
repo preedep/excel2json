@@ -16,7 +16,7 @@ struct Args {
     #[arg(help = "Sheet name to convert")]
     sheet: String,
 
-    #[arg(short, long, help = "Column numbers to include (comma-separated, e.g., 1,2,3). If not specified, all columns are included")]
+    #[arg(short, long, help = "Visible column numbers to include (comma-separated, e.g., 1,2,3). Only counts columns with non-empty headers. If not specified, all visible columns are included")]
     columns: Option<String>,
 
     #[arg(short, long, help = "Output JSON file path")]
@@ -24,10 +24,57 @@ struct Args {
 }
 
 fn normalize_column_name(name: &str) -> String {
-    name.to_lowercase().replace(' ', "_")
+    let trimmed = name.trim();
+    
+    let result = match trimmed {
+        "#" => "number".to_string(),
+        "@" => "at".to_string(),
+        "%" => "percent".to_string(),
+        "$" => "usd".to_string(),
+        "/" => "slash".to_string(),
+        "&" => "and".to_string(),
+        _ => {
+            trimmed
+                .to_lowercase()
+                .replace(" & ", "_and_")
+                .replace("&", "_and_")
+                .replace("/", "_")
+                .replace("@", "_at_")
+                .replace("#", "_")
+                .replace("%", "_percent")
+                .replace("$", "_usd")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(" ", "_")
+        }
+    };
+    
+    result
+        .split('_')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
-fn parse_column_numbers(columns_str: &str) -> Result<Vec<usize>> {
+fn get_visible_column_indices(header_row: &[calamine::Data]) -> Vec<usize> {
+    header_row
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, cell)| {
+            let cell_str = cell.to_string().trim().to_string();
+            if !cell_str.is_empty() {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn parse_visible_column_numbers(
+    columns_str: &str,
+    visible_indices: &[usize],
+) -> Result<Vec<usize>> {
     columns_str
         .split(',')
         .map(|s| {
@@ -38,7 +85,14 @@ fn parse_column_numbers(columns_str: &str) -> Result<Vec<usize>> {
                     if n == 0 {
                         anyhow::bail!("Column numbers must be greater than 0")
                     }
-                    Ok(n - 1)
+                    if n > visible_indices.len() {
+                        anyhow::bail!(
+                            "Column number {} exceeds visible column count ({})",
+                            n,
+                            visible_indices.len()
+                        )
+                    }
+                    Ok(visible_indices[n - 1])
                 })
         })
         .collect()
@@ -69,17 +123,22 @@ fn extract_headers(
 }
 
 fn convert_cell_to_json(cell: &calamine::Data) -> Value {
-    let cell_str = cell.to_string();
-    if cell.is_float() || cell.is_int() {
-        if let Ok(num) = cell_str.parse::<f64>() {
-            json!(num)
+    if cell.is_int() {
+        if let Some(int_val) = cell.get_int() {
+            json!(int_val)
         } else {
-            json!(cell_str)
+            json!(cell.to_string())
+        }
+    } else if cell.is_float() {
+        if let Some(float_val) = cell.get_float() {
+            json!(float_val)
+        } else {
+            json!(cell.to_string())
         }
     } else if cell.is_bool() {
         json!(cell.get_bool().unwrap_or(false))
     } else {
-        json!(cell_str)
+        json!(cell.to_string())
     }
 }
 
@@ -128,10 +187,12 @@ fn main() -> Result<()> {
         .next()
         .context("Excel sheet is empty, no header row found")?;
 
+    let visible_indices = get_visible_column_indices(header_row);
+
     let column_indices: Vec<usize> = if let Some(ref cols_str) = args.columns {
-        parse_column_numbers(cols_str)?
+        parse_visible_column_numbers(cols_str, &visible_indices)?
     } else {
-        (0..header_row.len()).collect()
+        visible_indices
     };
 
     let headers = extract_headers(header_row, &column_indices);
@@ -143,6 +204,7 @@ fn main() -> Result<()> {
     println!("Input: {:?}", args.file);
     println!("Sheet: {}", args.sheet);
     println!("Output: {:?}", args.output);
+    println!("Visible columns: {}", column_indices.len());
     println!("Total records: {}", json_array.len());
 
     Ok(())

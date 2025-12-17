@@ -25,6 +25,7 @@ target
 
 /target
 /datasource
+/output
 ./.idea
 /.idea/.gitignore
 /.idea/copilot.data.migration.agent.xml
@@ -32,3 +33,6 @@ target
 /.idea/material_theme_project_new.xml
 /.idea/modules.xml
 /.idea/vcs.xml
+
+
+convert.sh
