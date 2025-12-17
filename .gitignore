@@ -26,3 +26,9 @@ target
 /target
 /datasource
 ./.idea
+/.idea/.gitignore
+/.idea/copilot.data.migration.agent.xml
+/.idea/excel2json.iml
+/.idea/material_theme_project_new.xml
+/.idea/modules.xml
+/.idea/vcs.xml
