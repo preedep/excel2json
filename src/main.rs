@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use calamine::{open_workbook, DataType, Reader, Xlsx};
+use calamine::{open_workbook, Reader, Xlsx};
 use clap::Parser;
 use serde_json::{json, Value};
 use std::fs::File;
@@ -123,23 +123,7 @@ fn extract_headers(
 }
 
 fn convert_cell_to_json(cell: &calamine::Data) -> Value {
-    if cell.is_int() {
-        if let Some(int_val) = cell.get_int() {
-            json!(int_val)
-        } else {
-            json!(cell.to_string())
-        }
-    } else if cell.is_float() {
-        if let Some(float_val) = cell.get_float() {
-            json!(float_val)
-        } else {
-            json!(cell.to_string())
-        }
-    } else if cell.is_bool() {
-        json!(cell.get_bool().unwrap_or(false))
-    } else {
-        json!(cell.to_string())
-    }
+    json!(cell.to_string())
 }
 
 fn convert_rows_to_json<'a>(
